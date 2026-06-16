@@ -1,0 +1,12 @@
+# build output
+bin/
+obj/
+
+# editors
+*.user
+.vs/
+
+# os / logs / env
+.DS_Store
+*.log
+.env

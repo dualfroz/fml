@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Ast.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="Lexer.fs" />
+    <Compile Include="Parser.fs" />
+    <Compile Include="Decls.fs" />
+    <Compile Include="Match.fs" />
+    <Compile Include="Infer.fs" />
+    <Compile Include="Value.fs" />
+    <Compile Include="Eval.fs" />
+    <Compile Include="Prelude.fs" />
+    <Compile Include="Bytecode.fs" />
+    <Compile Include="Vm.fs" />
+    <Compile Include="Interpreter.fs" />
+  </ItemGroup>
+
+</Project>
