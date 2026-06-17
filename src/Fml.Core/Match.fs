@@ -272,3 +272,80 @@ let checkMatch (patterns: Pattern list) : unit =
     | Some(witness :: _) ->
         raise (MatchError(sprintf "non-exhaustive match: no clause covers %s" (renderCPat witness)))
     | _ -> ()
+
+let private testOfTag (tag: string) : SwitchTest =
+    if tag.StartsWith "#int:" then SInt(int (tag.Substring 5))
+    elif tag.StartsWith "#str:" then SStr(tag.Substring 5)
+    elif tag = "#bool:true" then SBool true
+    elif tag = "#bool:false" then SBool false
+    elif tag = "#unit" then SUnit
+    elif tag = "#nil" then SNil
+    elif tag = "#cons" then SCons
+    elif tag.StartsWith "#tuple:" then STuple
+    elif tag.StartsWith "#record:" then SRecord
+    else SCtor tag
+
+let rec private bindingsAt (prefix: Path) (p: Pattern) : (string * Path) list =
+    match p with
+    | PWildcard | PInt _ | PBool _ | PString _ | PUnit | PNil -> []
+    | PVar x -> [ x, prefix ]
+    | PTuple ps -> ps |> List.mapi (fun i sp -> bindingsAt (prefix @ [ i ]) sp) |> List.concat
+    | PCons(h, t) -> bindingsAt (prefix @ [ 0 ]) h @ bindingsAt (prefix @ [ 1 ]) t
+    | PConstruct(_, ps) -> ps |> List.mapi (fun i sp -> bindingsAt (prefix @ [ i ]) sp) |> List.concat
+    | PRecord fields ->
+        recordOrderedPatterns fields
+        |> List.mapi (fun i sp -> bindingsAt (prefix @ [ i ]) sp)
+        |> List.concat
+
+let private replaceAt (index: int) (replacement: 'a list) (source: 'a list) : 'a list =
+    let before = source |> List.take index
+    let after = source |> List.skip (index + 1)
+    before @ replacement @ after
+
+let private removeAt (index: int) (source: 'a list) : 'a list =
+    (source |> List.take index) @ (source |> List.skip (index + 1))
+
+let rec private buildTree (occ: Path list) (rows: (CPat list * int) list) : DecisionTree =
+    match rows with
+    | [] -> FailNode
+    | (patRow, idx) :: _ when List.forall isWild patRow -> Leaf idx
+    | (patRow, _) :: _ ->
+        let col = patRow |> List.findIndex (fun p -> not (isWild p))
+        let occCol = List.item col occ
+        let present =
+            rows
+            |> List.choose (fun (r, _) ->
+                match List.item col r with
+                | CCtor(t, a, _) -> Some(t, a)
+                | _ -> None)
+            |> List.distinctBy fst
+        let specializeRowAt tag arity (row: CPat list, rowIdx: int) : (CPat list * int) option =
+            match List.item col row with
+            | CWild -> Some(replaceAt col (List.replicate arity CWild) row, rowIdx)
+            | CCtor(t, _, args) -> if t = tag then Some(replaceAt col args row, rowIdx) else None
+        let makeChild (tag, arity) =
+            let spreadOcc = replaceAt col [ for k in 0 .. arity - 1 -> occCol @ [ k ] ] occ
+            let subRows = rows |> List.choose (specializeRowAt tag arity)
+            testOfTag tag, buildTree spreadOcc subRows
+        let children = present |> List.map makeChild
+        let defaultTree =
+            match completeSignature (present |> List.map fst) with
+            | Some _ -> None
+            | None ->
+                let defaultOcc = removeAt col occ
+                let defaultRows =
+                    rows
+                    |> List.choose (fun (row, rowIdx) ->
+                        match List.item col row with
+                        | CWild -> Some(removeAt col row, rowIdx)
+                        | _ -> None)
+                Some(buildTree defaultOcc defaultRows)
+        SwitchNode(occCol, children, defaultTree)
+
+// Lowers a match into a decision tree plus, for each clause, the variable
+// bindings expressed as paths into the scrutinee.
+let compileMatch (patterns: Pattern list) : DecisionTree * (string * Path) list [] =
+    let rows = patterns |> List.mapi (fun i p -> [ toCPat p ], i)
+    let tree = buildTree [ [] ] rows
+    let bindings = patterns |> List.map (bindingsAt []) |> Array.ofList
+    tree, bindings
