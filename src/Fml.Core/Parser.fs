@@ -353,7 +353,121 @@ let parse (tokenList: Token list) : Phrase list =
         expect TkRBrace
         PRecord(List.ofSeq fields)
 
-    let parsePhrase () =
+    and parseTyExpr () = parseTyArrow ()
+
+    and parseTyArrow () =
+        let left = parseTyTuple ()
+        if peek () = TkArrow then
+            advance () |> ignore
+            TEArrow(left, parseTyArrow ())
+        else left
+
+    and parseTyTuple () =
+        let first = parseTyApp ()
+        if peek () = TkStar then
+            let parts = ResizeArray<TyExpr>()
+            parts.Add first
+            while peek () = TkStar do
+                advance () |> ignore
+                parts.Add(parseTyApp ())
+            TETuple(List.ofSeq parts)
+        else first
+
+    and parseTyApp () =
+        let mutable base' = parseTyAtom ()
+        let mutable go = true
+        while go do
+            match peek () with
+            | TkIdent name when not (isUpper name) ->
+                advance () |> ignore
+                base' <- TECon(name, [ base' ])
+            | _ -> go <- false
+        base'
+
+    and parseTyAtom () =
+        match advance () with
+        | TkTyVar a -> TEVar a
+        | TkIdent name -> TECon(name, [])
+        | TkLParen ->
+            let first = parseTyExpr ()
+            if peek () = TkComma then
+                let args = ResizeArray<TyExpr>()
+                args.Add first
+                while peek () = TkComma do
+                    advance () |> ignore
+                    args.Add(parseTyExpr ())
+                expect TkRParen
+                let conName = expectIdent ()
+                TECon(conName, List.ofSeq args)
+            else
+                expect TkRParen
+                first
+        | t -> raise (ParseError(sprintf "unexpected token in type expression %A" t))
+
+    and parseTypeParams () =
+        match peek () with
+        | TkTyVar a -> advance () |> ignore; [ a ]
+        | TkLParen ->
+            advance () |> ignore
+            let ps = ResizeArray<string>()
+            let readVar () =
+                match advance () with
+                | TkTyVar a -> ps.Add a
+                | t -> raise (ParseError(sprintf "expected a type variable but found %A" t))
+            readVar ()
+            while peek () = TkComma do
+                advance () |> ignore
+                readVar ()
+            expect TkRParen
+            List.ofSeq ps
+        | _ -> []
+
+    and parseTypeDecl () =
+        let ps = parseTypeParams ()
+        let name = expectIdent ()
+        expect TkEquals
+        let body =
+            if peek () = TkLBrace then parseRecordDef ()
+            else parseVariants ()
+        { Name = name; Params = ps; Body = body }
+
+    and parseRecordDef () =
+        expect TkLBrace
+        let fields = ResizeArray<string * TyExpr>()
+        let parseField () =
+            let name = expectIdent ()
+            expect TkColon
+            let ty = parseTyExpr ()
+            fields.Add(name, ty)
+        parseField ()
+        while peek () = TkSemi do
+            advance () |> ignore
+            if peek () <> TkRBrace then parseField ()
+        expect TkRBrace
+        RecordDef(List.ofSeq fields)
+
+    and parseVariants () =
+        if peek () = TkBar then advance () |> ignore
+        let variants = ResizeArray<string * TyExpr list>()
+        let parseVariant () =
+            let ctorName = expectIdent ()
+            if not (isUpper ctorName) then
+                raise (ParseError(sprintf "constructor name must start uppercase: %s" ctorName))
+            let argTypes =
+                if peek () = TkOf then
+                    advance () |> ignore
+                    match parseTyExpr () with
+                    | TETuple parts -> parts
+                    | single -> [ single ]
+                else []
+            variants.Add(ctorName, argTypes)
+        parseVariant ()
+        while peek () = TkBar do
+            advance () |> ignore
+            parseVariant ()
+        Variants(List.ofSeq variants)
+
+    let rec parsePhrase () =
         match peek () with
         | TkLet ->
             expect TkLet
@@ -365,6 +479,29 @@ let parse (tokenList: Token list) : Phrase list =
                 PhraseExpr(makeLet isRec bindings body)
             else
                 PhraseLet(isRec, bindings)
+        | TkType ->
+            expect TkType
+            let decls = ResizeArray<TypeDecl>()
+            decls.Add(parseTypeDecl ())
+            while peek () = TkKwAnd do
+                advance () |> ignore
+                decls.Add(parseTypeDecl ())
+            PhraseType(List.ofSeq decls)
+        | TkModule ->
+            expect TkModule
+            let name = expectIdent ()
+            expect TkEquals
+            expect TkStruct
+            let inner = ResizeArray<Phrase>()
+            while peek () <> TkEnd && peek () <> TkEOF do
+                inner.Add(parsePhrase ())
+                while peek () = TkDoubleSemi do advance () |> ignore
+            expect TkEnd
+            PhraseModule(name, List.ofSeq inner)
+        | TkOpen ->
+            expect TkOpen
+            let name = expectIdent ()
+            PhraseOpen name
         | _ -> PhraseExpr(parseExpr ())
 
     let phrases = ResizeArray<Phrase>()
