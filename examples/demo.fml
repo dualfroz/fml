@@ -1,0 +1,21 @@
+(* fml demo: Hindley-Milner inference and evaluation over a few classics. *)
+
+let rec fib = fun n -> if n < 2 then n else fib (n - 1) + fib (n - 2) ;;
+fib 10 ;;
+
+let rec map = fun f -> fun xs ->
+  match xs with
+  | [] -> []
+  | h :: t -> f h :: map f t ;;
+map (fun x -> x * x) [1; 2; 3; 4; 5] ;;
+
+let compose = fun f -> fun g -> fun x -> f (g x) ;;
+
+let id = fun x -> x ;;
+(id 1, id true) ;;
+
+let rec length = fun xs ->
+  match xs with
+  | [] -> 0
+  | _ :: t -> 1 + length t ;;
+length [10; 20; 30; 40] ;;
