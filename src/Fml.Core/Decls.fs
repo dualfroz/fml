@@ -3,10 +3,6 @@ module Fml.Core.Decls
 open Fml.Core.Ast
 open Fml.Core.Types
 
-// Global registries for user-declared algebraic data types and records.
-// They mirror the mutable-global style already used for the inference counter
-// and are reset per session so runProgram stays reproducible.
-
 type CtorInfo =
     { Tag: string
       TypeName: string
@@ -102,9 +98,6 @@ let rec tyExprToTy (subst: Map<string, Ty>) (te: TyExpr) : Ty =
         | "list", [ single ] -> TList(tyExprToTy subst single)
         | _ -> TCon(name, List.map (tyExprToTy subst) args)
 
-// Fresh instantiation of a declared constructor: returns the argument types and
-// the built result type, all sharing freshly allocated type variables for the
-// type parameters.
 let instantiateCtor (info: CtorInfo) : Ty list * Ty =
     let subst = info.Params |> List.map (fun p -> p, newVar ()) |> Map.ofList
     let argTys = info.ArgTypes |> List.map (tyExprToTy subst)
@@ -117,8 +110,6 @@ let instantiateField (info: FieldInfo) : Ty * Ty =
     let recordTy = TCon(info.TypeName, info.Params |> List.map (fun p -> subst.[p]))
     fieldTy, recordTy
 
-// Instantiates a whole record type at once so every field shares the same fresh
-// type parameters. Returns the per-field types and the record's own type.
 let instantiateRecordType (typeName: string) : Map<string, Ty> * Ty =
     match Map.tryFind typeName typeInfos with
     | Some info when info.IsRecord ->

@@ -2,11 +2,6 @@ module Fml.Core.Value
 
 open Fml.Core.Ast
 
-// Runtime values shared by the tree-walking interpreter and the bytecode VM.
-// Interpreter closures carry a mutable environment cell so let rec can tie the
-// recursive knot. VM closures carry a code-object id plus a captured de Bruijn
-// environment cell for the same reason.
-
 type Value =
     | VInt of int
     | VBool of bool

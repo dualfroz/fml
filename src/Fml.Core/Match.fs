@@ -3,11 +3,6 @@ module Fml.Core.Match
 open Fml.Core.Ast
 open Fml.Core.Decls
 
-// Pattern-match analysis and compilation. Patterns are normalized to a uniform
-// constructor form (CPat). On that form we run Maranget's usefulness algorithm
-// for exhaustiveness and redundancy, and a matrix compiler that lowers a match
-// into a decision tree the bytecode backend can walk.
-
 exception MatchError of string
 
 type CPat =
@@ -18,9 +13,6 @@ type Signature =
     | Finite of (string * int) list
     | Infinite
 
-// A path addresses a sub-value of the scrutinee by successive positional
-// projections: tuple element, cons head(0)/tail(1), constructor argument, or
-// record field in sorted-name order.
 type Path = int list
 
 type SwitchTest =
@@ -172,8 +164,6 @@ let private describeCPat (p: CPat) : string =
         elif tag.StartsWith "#record:" then "a record"
         else tag
 
-// Renders a constructor pattern back into surface-like syntax so an
-// exhaustiveness counterexample reads the way a user would have written it.
 let rec private renderCPat (p: CPat) : string =
     match p with
     | CWild -> "_"
@@ -204,8 +194,6 @@ and private renderConsArg (p: CPat) : string =
     | CCtor("#cons", _, _) -> "(" + renderCPat p + ")"
     | _ -> renderCPat p
 
-// Picks a head constructor (or literal value) that no clause in the column
-// mentions, so the witness names a genuinely missing case.
 let private missingHead (presentTags: string list) : CPat option =
     match presentTags with
     | [] -> None
@@ -231,9 +219,6 @@ let private missingHead (presentTags: string list) : CPat option =
             | (tag, arity) :: _ -> Some(CCtor(tag, arity, List.replicate arity CWild))
             | [] -> None
 
-// Maranget's witness-producing usefulness algorithm. Returns a counterexample
-// row of width n that no row of the matrix matches, or None when the matrix is
-// exhaustive over n columns.
 let rec private witnessRows (matrix: CPat list list) (n: int) : CPat list option =
     if n = 0 then
         if List.isEmpty matrix then Some [] else None
@@ -260,7 +245,6 @@ let rec private witnessRows (matrix: CPat list list) (n: int) : CPat list option
                 Some(head :: w)
             | None -> None
 
-// Runs redundancy and exhaustiveness analysis, raising MatchError on failure.
 let checkMatch (patterns: Pattern list) : unit =
     let rows = patterns |> List.map (fun p -> [ toCPat p ])
     rows
@@ -342,8 +326,6 @@ let rec private buildTree (occ: Path list) (rows: (CPat list * int) list) : Deci
                 Some(buildTree defaultOcc defaultRows)
         SwitchNode(occCol, children, defaultTree)
 
-// Lowers a match into a decision tree plus, for each clause, the variable
-// bindings expressed as paths into the scrutinee.
 let compileMatch (patterns: Pattern list) : DecisionTree * (string * Path) list [] =
     let rows = patterns |> List.mapi (fun i p -> [ toCPat p ], i)
     let tree = buildTree [ [] ] rows

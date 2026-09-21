@@ -3,9 +3,6 @@ module Fml.Core.Prelude
 open Fml.Core.Types
 open Fml.Core.Value
 
-// Built-in primitives shared by the interpreter and the bytecode VM, plus a
-// standard library written in fml itself that each session may load on top.
-
 let private genVar () = TVar(ref (Generic(newVarId ())))
 
 let initialTypeEnv: Map<string, Ty> =
@@ -105,9 +102,6 @@ let initialValueEnv: Env =
                   | _ -> raise (RuntimeError "boolToString expects a bool")
           ) ]
 
-// Standard library implemented in fml. Loaded on demand so the base session and
-// its 22 legacy tests stay untouched. Exercises ADTs, records, modules,
-// mutually recursive definitions and exhaustive matching all at once.
 let preludeSource =
     """
 type 'a option = None | Some of 'a ;;

@@ -1,9 +1,5 @@
 module Fml.Core.Ast
 
-// Abstract syntax for the fml language. Multi-argument functions are
-// desugared into nested single-argument lambdas by the parser, so the
-// evaluator and type checker only ever see one parameter per lambda.
-
 type Expr =
     | IntLit of int
     | BoolLit of bool
@@ -38,7 +34,6 @@ and Pattern =
     | PConstruct of string * Pattern list
     | PRecord of (string * Pattern) list
 
-// Surface syntax for type expressions inside declarations and annotations.
 type TyExpr =
     | TEVar of string
     | TECon of string * TyExpr list
@@ -55,9 +50,6 @@ type TypeDecl =
       Params: string list
       Body: TypeBody }
 
-// A top-level phrase is either a bare expression, a definition group, a type
-// declaration group, a module, or an open directive. Definitions extend the
-// persistent session environment.
 type Phrase =
     | PhraseExpr of Expr
     | PhraseLet of bool * (string * Expr) list

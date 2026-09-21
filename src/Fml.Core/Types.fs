@@ -1,10 +1,5 @@
 module Fml.Core.Types
 
-// Types for the Hindley-Milner core. Type variables are mutable cells so
-// unification can link them in place. Generalization uses the level trick
-// (Remy / OCaml): a variable is generalizable when its level is deeper than
-// the level of the let binding it escapes from.
-
 type Ty =
     | TInt
     | TBool
