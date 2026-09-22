@@ -33,7 +33,7 @@ type private Frame =
       Pc: int
       Env: Value list }
 
-type Machine(functions: ResizeArray<Instr []>, globals: Map<string, Value>) =
+type Machine(functions: ResizeArray<Instr []>) =
 
     member _.Run(entry: Instr []) : Value =
         let stack = Stack<Value>()
@@ -56,10 +56,7 @@ type Machine(functions: ResizeArray<Instr []>, globals: Map<string, Value>) =
             match instr with
             | Push v -> stack.Push v
             | LoadLocal i -> stack.Push(List.item i env)
-            | LoadGlobal name ->
-                match Map.tryFind name globals with
-                | Some v -> stack.Push v
-                | None -> raise (RuntimeError(sprintf "unbound variable '%s'" name))
+            | LoadGlobal cell -> stack.Push cell.Value
             | MakeClosure id -> stack.Push(VCode(id, ref env))
             | MakeRec ids ->
                 let shared = ref env
@@ -160,7 +157,7 @@ type Machine(functions: ResizeArray<Instr []>, globals: Map<string, Value>) =
 
         result
 
-let compileAndRun (functions: ResizeArray<Instr []>) (globals: Map<string, Value>) (expr: Ast.Expr) : Value =
-    let entry = compileBlock functions [] false expr
-    let machine = Machine(functions, globals)
+let compileAndRun (functions: ResizeArray<Instr []>) (globals: Map<string, Value ref>) (expr: Ast.Expr) : Value =
+    let entry = compileBlock functions globals [] false expr
+    let machine = Machine(functions)
     machine.Run entry

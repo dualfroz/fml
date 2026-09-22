@@ -33,9 +33,6 @@ let rec private patternVars (pat: Pattern) : Set<string> =
     | PConstruct(_, ps) -> ps |> List.map patternVars |> Set.unionMany
     | PRecord fields -> fields |> List.map (snd >> patternVars) |> Set.unionMany
 
-// Rewrites free variables named in mapping to their qualified form, respecting
-// binders so shadowed names are left alone. Used to give module-internal
-// references their qualified global keys.
 let rec renameFreeVars (mapping: Map<string, string>) (bound: Set<string>) (e: Expr) : Expr =
     let recur b = renameFreeVars mapping b
     match e with
@@ -71,6 +68,44 @@ let rec renameFreeVars (mapping: Map<string, string>) (bound: Set<string>) (e: E
             |> List.map (fun (pat, body) -> pat, recur (Set.union bound (patternVars pat)) body)
         Match(recur bound scrut, cases')
 
+let private takesSingleField (name: string) : bool =
+    match lookupCtor name with
+    | Some info -> List.length info.ArgTypes = 1
+    | None -> false
+
+let rec private groupCtorPatternArgs (pat: Pattern) : Pattern =
+    match pat with
+    | PVar _ | PWildcard | PInt _ | PBool _ | PString _ | PUnit | PNil -> pat
+    | PTuple ps -> PTuple(List.map groupCtorPatternArgs ps)
+    | PCons(h, t) -> PCons(groupCtorPatternArgs h, groupCtorPatternArgs t)
+    | PConstruct(name, ps) ->
+        let args = List.map groupCtorPatternArgs ps
+        if List.length args > 1 && takesSingleField name then PConstruct(name, [ PTuple args ])
+        else PConstruct(name, args)
+    | PRecord fields -> PRecord(fields |> List.map (fun (n, p) -> n, groupCtorPatternArgs p))
+
+let rec private groupCtorArgs (e: Expr) : Expr =
+    match e with
+    | IntLit _ | BoolLit _ | StringLit _ | UnitLit | Nil | Var _ -> e
+    | Lambda(p, body) -> Lambda(p, groupCtorArgs body)
+    | App(fn, arg) -> App(groupCtorArgs fn, groupCtorArgs arg)
+    | Let(isRec, name, rhs, body) -> Let(isRec, name, groupCtorArgs rhs, groupCtorArgs body)
+    | LetGroup(isRec, bindings, body) ->
+        LetGroup(isRec, bindings |> List.map (fun (n, r) -> n, groupCtorArgs r), groupCtorArgs body)
+    | If(c, t, f) -> If(groupCtorArgs c, groupCtorArgs t, groupCtorArgs f)
+    | BinOp(op, l, r) -> BinOp(op, groupCtorArgs l, groupCtorArgs r)
+    | Neg inner -> Neg(groupCtorArgs inner)
+    | Tuple items -> Tuple(List.map groupCtorArgs items)
+    | Cons(h, t) -> Cons(groupCtorArgs h, groupCtorArgs t)
+    | Construct(name, args) ->
+        let grouped = List.map groupCtorArgs args
+        if List.length grouped > 1 && takesSingleField name then Construct(name, [ Tuple grouped ])
+        else Construct(name, grouped)
+    | Record fields -> Record(fields |> List.map (fun (n, v) -> n, groupCtorArgs v))
+    | Field(record, name) -> Field(groupCtorArgs record, name)
+    | Match(scrut, cases) ->
+        Match(groupCtorArgs scrut, cases |> List.map (fun (pat, body) -> groupCtorPatternArgs pat, groupCtorArgs body))
+
 type Session(backend: Backend) =
     do resetDecls ()
     let mutable typeEnv = initialTypeEnv
@@ -78,10 +113,13 @@ type Session(backend: Backend) =
     let functions = ResizeArray<Instr []>()
     let mutable moduleMembers: Map<string, string list> = Map.empty
 
+    let globalCells (pending: (string * Value ref) list) : Map<string, Value ref> =
+        pending |> List.fold (fun cells (n, cell) -> Map.add n cell cells) (runtimeEnv |> Map.map (fun _ v -> ref v))
+
     let evalExpr (e: Expr) : Value =
         match backend with
         | Interp -> eval runtimeEnv e
-        | Vm -> Vm.compileAndRun functions runtimeEnv e
+        | Vm -> Vm.compileAndRun functions (globalCells []) e
 
     let inferTop (e: Expr) : Ty =
         currentLevel <- 0
@@ -91,7 +129,8 @@ type Session(backend: Backend) =
         generalize ty
         ty
 
-    let processExpr (e: Expr) : PhraseResult =
+    let processExpr (parsed: Expr) : PhraseResult =
+        let e = groupCtorArgs parsed
         let ty = inferTop e
         let v = evalExpr e
         typeEnv <- Map.add "it" ty typeEnv
@@ -101,7 +140,8 @@ type Session(backend: Backend) =
           Value = v
           ValueText = prettyValue v }
 
-    let processLet (isRec: bool) (bindings: (string * Expr) list) : PhraseResult list =
+    let processLet (isRec: bool) (parsed: (string * Expr) list) : PhraseResult list =
+        let bindings = parsed |> List.map (fun (n, rhs) -> n, groupCtorArgs rhs)
         currentLevel <- 0
         let newTypeEnv = inferLetGroup typeEnv isRec bindings
         let values =
@@ -111,7 +151,10 @@ type Session(backend: Backend) =
                 runtimeEnv <- newEnv
                 bindings |> List.map (fun (n, _) -> n, Map.find n newEnv)
             | Vm ->
-                let vs = bindings |> List.map (fun (n, rhs) -> n, Vm.compileAndRun functions runtimeEnv rhs)
+                let cells = bindings |> List.map (fun (n, _) -> n, ref VUnit)
+                let globals = globalCells (if isRec then cells else [])
+                let vs = bindings |> List.map (fun (n, rhs) -> n, Vm.compileAndRun functions globals rhs)
+                List.iter2 (fun (_, cell: Value ref) (_, v) -> cell.Value <- v) cells vs
                 runtimeEnv <- vs |> List.fold (fun e (n, v) -> Map.add n v e) runtimeEnv
                 vs
         typeEnv <- newTypeEnv
@@ -196,8 +239,6 @@ let tryTypeOf (source: string) : Result<string, string> =
     | ParseError m -> Error m
     | LexError m -> Error m
 
-// Runs a program on a chosen backend, optionally on top of the fml standard
-// library, returning the final phrase value.
 let evalOn (backend: Backend) (loadPrelude: bool) (source: string) : Value =
     let session = Session(backend)
     if loadPrelude then session.LoadPrelude()

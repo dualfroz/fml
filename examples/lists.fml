@@ -1,0 +1,76 @@
+open List ;;
+
+let rec take = fun n xs ->
+  if n <= 0 then []
+  else match xs with
+    | [] -> []
+    | h :: t -> h :: take (n - 1) t ;;
+
+let rec drop = fun n xs ->
+  if n <= 0 then xs
+  else match xs with
+    | [] -> []
+    | _ :: t -> drop (n - 1) t ;;
+
+let rec zipWith = fun f xs ys ->
+  match (xs, ys) with
+  | (x :: xt, y :: yt) -> f x y :: zipWith f xt yt
+  | _ -> [] ;;
+
+let rec nth = fun n xs ->
+  match xs with
+  | [] -> None
+  | h :: t -> if n = 0 then Some h else nth (n - 1) t ;;
+
+let partition = fun p xs -> (filter p xs, filter (fun x -> not (p x)) xs) ;;
+let concat = fun xss -> foldr append [] xss ;;
+let flatMap = fun f xs -> concat (map f xs) ;;
+
+let rec join = fun sep xs ->
+  match xs with
+  | [] -> ""
+  | [x] -> x
+  | h :: t -> h ^ sep ^ join sep t ;;
+
+let rec dedup = fun xs ->
+  match xs with
+  | [] -> []
+  | h :: t -> if mem h t then dedup t else h :: dedup t ;;
+
+let rec mergeInto = fun xs ys ->
+  match (xs, ys) with
+  | ([], _) -> ys
+  | (_, []) -> xs
+  | (x :: xt, y :: yt) -> if x <= y then x :: mergeInto xt ys else y :: mergeInto xs yt ;;
+
+let rec sort = fun xs ->
+  match xs with
+  | [] -> []
+  | [x] -> [x]
+  | _ ->
+    let half = length xs / 2 in
+    mergeInto (sort (take half xs)) (sort (drop half xs)) ;;
+
+let rec sieve = fun xs ->
+  match xs with
+  | [] -> []
+  | p :: t -> p :: sieve (filter (fun n -> n mod p <> 0) t) ;;
+
+let triples = fun limit ->
+  flatMap (fun a ->
+    flatMap (fun b ->
+      flatMap (fun c -> if a * a + b * b = c * c then [(a, b, c)] else [])
+        (range b (limit + 1)))
+      (range a (limit + 1)))
+    (range 1 (limit + 1)) ;;
+
+(take 3 (range 0 10), drop 7 (range 0 10)) ;;
+zipWith (fun a b -> a * b) [1; 2; 3] [10; 20; 30; 40] ;;
+(nth 2 ["a"; "b"; "c"], nth 5 ["a"; "b"; "c"]) ;;
+partition (fun n -> n mod 2 = 0) (range 1 11) ;;
+flatMap (fun n -> [n; n * 100]) [1; 2; 3] ;;
+join ", " (map intToString (dedup [3; 1; 3; 2; 1])) ;;
+sort [38; 27; 43; 3; 9; 82; 10; 3] ;;
+sieve (range 2 60) ;;
+triples 20 ;;
+sum (map (fun n -> n * n) (range 1 11)) ;;

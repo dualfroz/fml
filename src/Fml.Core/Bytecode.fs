@@ -5,15 +5,10 @@ open Fml.Core.Ast
 open Fml.Core.Value
 open Fml.Core.Match
 
-// Stack-machine instruction set. The runtime environment is a de Bruijn stack
-// (index 0 is the most recent binding); the operand stack holds intermediates.
-// Closures capture the whole current environment; recursive groups tie the knot
-// through a shared environment cell.
-
 type Instr =
     | Push of Value
     | LoadLocal of int
-    | LoadGlobal of string
+    | LoadGlobal of Value ref
     | MakeClosure of int
     | MakeRec of int list
     | Bind
@@ -56,10 +51,7 @@ let private testInstr (test: SwitchTest) : Instr =
     | SCtor tag -> TestCtor tag
     | SUnit | STuple | SRecord -> failwith "trivial tests are not emitted"
 
-// Compiles an expression into a self-contained code block, appending any nested
-// function bodies to the shared functions table. rootTail marks whether the
-// block sits in a tail position (top-level phrases do not).
-let rec compileBlock (functions: ResizeArray<Instr []>) (rootScope: string list) (rootTail: bool) (expr: Expr) : Instr [] =
+let rec compileBlock (functions: ResizeArray<Instr []>) (globals: Map<string, Value ref>) (rootScope: string list) (rootTail: bool) (expr: Expr) : Instr [] =
     let code = ResizeArray<Instr>()
     let labels = Dictionary<int, int>()
     let fixups = ResizeArray<int * int>()
@@ -83,7 +75,7 @@ let rec compileBlock (functions: ResizeArray<Instr []>) (rootScope: string list)
     let compileFunction (scope: string list) (param: string) (body: Expr) : int =
         let id = functions.Count
         functions.Add [||]
-        let block = compileBlock functions (param :: scope) true body
+        let block = compileBlock functions globals (param :: scope) true body
         functions.[id] <- block
         id
 
@@ -96,7 +88,7 @@ let rec compileBlock (functions: ResizeArray<Instr []>) (rootScope: string list)
                 | Lambda(param, body) ->
                     let id = functions.Count
                     functions.Add [||]
-                    let block = compileBlock functions (param :: groupScope) true body
+                    let block = compileBlock functions globals (param :: groupScope) true body
                     functions.[id] <- block
                     id
                 | _ -> raise (RuntimeError "let rec binding must be a function"))
@@ -111,7 +103,10 @@ let rec compileBlock (functions: ResizeArray<Instr []>) (rootScope: string list)
         | Var x ->
             match localIndex scope x with
             | Some idx -> emit (LoadLocal idx)
-            | None -> emit (LoadGlobal x)
+            | None ->
+                match Map.tryFind x globals with
+                | Some cell -> emit (LoadGlobal cell)
+                | None -> raise (RuntimeError(sprintf "unbound variable '%s'" x))
         | Lambda(param, body) ->
             let id = compileFunction scope param body
             emit (MakeClosure id)

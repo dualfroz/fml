@@ -26,7 +26,13 @@ let tokenize (src: string) : Token list =
     let mutable i = 0
     let peek k = if i + k < n then src.[i + k] else '\000'
     let isIdentStart c = Char.IsLetter c || c = '_'
-    let isIdentCont c = Char.IsLetterOrDigit c || c = '_' || c = '\''
+    let isDigit c = c >= '0' && c <= '9'
+    let isIdentCont c = Char.IsLetter c || isDigit c || c = '_' || c = '\''
+    let positionOf offset =
+        let before = src.Substring(0, offset)
+        let line = 1 + (before |> Seq.filter ((=) '\n') |> Seq.length)
+        let column = offset - before.LastIndexOf '\n'
+        line, column
     while i < n do
         let c = src.[i]
         if c = ' ' || c = '\t' || c = '\r' || c = '\n' then
@@ -70,10 +76,15 @@ let tokenize (src: string) : Token list =
             let start = i
             while i < n && isIdentCont src.[i] do i <- i + 1
             tokens.Add(TkTyVar(src.Substring(start, i - start)))
-        elif Char.IsDigit c then
+        elif isDigit c then
             let start = i
-            while i < n && Char.IsDigit src.[i] do i <- i + 1
-            tokens.Add(TkInt(Int32.Parse(src.Substring(start, i - start))))
+            while i < n && isDigit src.[i] do i <- i + 1
+            let digits = src.Substring(start, i - start)
+            match Int32.TryParse(digits, Globalization.NumberStyles.None, Globalization.CultureInfo.InvariantCulture) with
+            | true, value -> tokens.Add(TkInt value)
+            | _ ->
+                let line, column = positionOf start
+                raise (LexError(sprintf "integer literal %s is out of range at line %d, column %d" digits line column))
         elif isIdentStart c then
             let start = i
             while i < n && isIdentCont src.[i] do i <- i + 1

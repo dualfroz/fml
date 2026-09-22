@@ -1,0 +1,9 @@
+val fib : int -> int = <fun>
+val it : int = 55
+val map : ('a -> 'b) -> 'a list -> 'b list = <fun>
+val it : int list = [1; 4; 9; 16; 25]
+val compose : ('a -> 'b) -> ('c -> 'a) -> 'c -> 'b = <fun>
+val id : 'a -> 'a = <fun>
+val it : int * bool = (1, true)
+val length : 'a list -> int = <fun>
+val it : int = 4

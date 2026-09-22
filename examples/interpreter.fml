@@ -1,0 +1,112 @@
+type term =
+  | Num of int
+  | Bool of bool
+  | Ref of string
+  | Add of term * term
+  | Sub of term * term
+  | Mul of term * term
+  | Less of term * term
+  | Cond of term * term * term
+  | Bind of string * term * term
+  | Lam of string * term
+  | Call of term * term ;;
+
+type value =
+  | IntV of int
+  | BoolV of bool
+  | Closure of string * term * (string * value) list ;;
+
+let andThen = fun r f ->
+  match r with
+  | Ok v -> f v
+  | Error e -> Error e ;;
+
+let show = fun v ->
+  match v with
+  | IntV n -> intToString n
+  | BoolV b -> boolToString b
+  | Closure (x, _, _) -> "<closure " ^ x ^ ">" ;;
+
+let rec eval = fun env t ->
+  match t with
+  | Num n -> Ok (IntV n)
+  | Bool b -> Ok (BoolV b)
+  | Ref x ->
+    (match Map.find x env with
+     | Some v -> Ok v
+     | None -> Error ("unbound variable " ^ x))
+  | Add (a, b) -> arith (fun x y -> IntV (x + y)) env a b
+  | Sub (a, b) -> arith (fun x y -> IntV (x - y)) env a b
+  | Mul (a, b) -> arith (fun x y -> IntV (x * y)) env a b
+  | Less (a, b) -> arith (fun x y -> BoolV (x < y)) env a b
+  | Cond (c, yes, no) ->
+    andThen (eval env c) (fun cv ->
+      match cv with
+      | BoolV true -> eval env yes
+      | BoolV false -> eval env no
+      | _ -> Error "condition is not a boolean")
+  | Bind (x, rhs, body) ->
+    andThen (eval env rhs) (fun v -> eval (Map.add x v env) body)
+  | Lam (x, body) -> Ok (Closure (x, body, env))
+  | Call (f, arg) ->
+    andThen (eval env f) (fun fv ->
+      andThen (eval env arg) (fun av ->
+        match fv with
+        | Closure (x, body, captured) -> eval (Map.add x av captured) body
+        | _ -> Error "call of a non-function"))
+
+and arith = fun op env a b ->
+  andThen (eval env a) (fun va ->
+    andThen (eval env b) (fun vb ->
+      match (va, vb) with
+      | (IntV x, IntV y) -> Ok (op x y)
+      | _ -> Error "arithmetic on a non-integer")) ;;
+
+let rec simplify = fun t ->
+  match t with
+  | Add (a, b) ->
+    (match (simplify a, simplify b) with
+     | (Num 0, e) -> e
+     | (e, Num 0) -> e
+     | (Num x, Num y) -> Num (x + y)
+     | (x, y) -> Add (x, y))
+  | Mul (a, b) ->
+    (match (simplify a, simplify b) with
+     | (Num 0, _) -> Num 0
+     | (_, Num 0) -> Num 0
+     | (Num 1, e) -> e
+     | (e, Num 1) -> e
+     | (Num x, Num y) -> Num (x * y)
+     | (x, y) -> Mul (x, y))
+  | Sub (a, b) -> Sub (simplify a, simplify b)
+  | Cond (c, yes, no) -> Cond (simplify c, simplify yes, simplify no)
+  | Bind (x, rhs, body) -> Bind (x, simplify rhs, simplify body)
+  | Lam (x, body) -> Lam (x, simplify body)
+  | Call (f, arg) -> Call (simplify f, simplify arg)
+  | _ -> t ;;
+
+let run = fun t ->
+  match eval Map.empty t with
+  | Ok v -> show v
+  | Error e -> "error: " ^ e ;;
+
+let selfApply = Lam ("x", Call (Ref "f", Lam ("v", Call (Call (Ref "x", Ref "x"), Ref "v")))) ;;
+let fixpoint = Lam ("f", Call (selfApply, selfApply)) ;;
+
+let factorial =
+  Call (fixpoint,
+    Lam ("fact", Lam ("n",
+      Cond (Less (Ref "n", Num 1),
+            Num 1,
+            Mul (Ref "n", Call (Ref "fact", Sub (Ref "n", Num 1))))))) ;;
+
+run (Add (Num 2, Mul (Num 3, Num 4))) ;;
+run (Bind ("x", Num 5, Bind ("y", Num 7, Less (Ref "x", Ref "y")))) ;;
+run (Bind ("double", Lam ("n", Add (Ref "n", Ref "n")), Call (Ref "double", Num 21))) ;;
+run (Call (factorial, Num 10)) ;;
+run (Lam ("z", Ref "z")) ;;
+run (Add (Num 1, Bool true)) ;;
+run (Mul (Ref "w", Num 2)) ;;
+run (Call (Num 3, Num 4)) ;;
+simplify (Add (Mul (Num 1, Ref "a"), Mul (Ref "b", Add (Num 0, Num 0)))) ;;
+simplify (Lam ("q", Add (Num 2, Mul (Num 3, Num 4)))) ;;

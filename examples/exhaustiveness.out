@@ -1,0 +1,13 @@
+val colorName : color -> string = <fun>
+val classify : int -> string = <fun>
+val agreement : bool * bool -> string = <fun>
+val merge : int list -> int list -> int list = <fun>
+val firstTwo : 'a list -> 'a option = <fun>
+val beats : suit -> suit -> bool = <fun>
+val it : string list = ["red"; "green"; "blue"]
+val it : string list = ["zero"; "one"; "many"; "many"]
+val it : string * string * string = ("both", "one", "neither")
+val it : int list = [1; 2; 3; 4; 9; 10]
+val it : int option * 'a option = (Some 7, None)
+val it : bool * bool = (true, false)
+Match error: non-exhaustive match: no clause covers ([], _ :: _)

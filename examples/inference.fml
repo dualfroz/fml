@@ -1,0 +1,37 @@
+let id = fun x -> x ;;
+let const = fun x y -> x ;;
+let flip = fun f x y -> f y x ;;
+let compose = fun f g x -> f (g x) ;;
+let twice = fun f x -> f (f x) ;;
+
+let rec map = fun f xs ->
+  match xs with
+  | [] -> []
+  | h :: t -> f h :: map f t ;;
+
+let rec foldr = fun f acc xs ->
+  match xs with
+  | [] -> acc
+  | h :: t -> f h (foldr f acc t) ;;
+
+let rec zip = fun xs ys ->
+  match (xs, ys) with
+  | (x :: xt, y :: yt) -> (x, y) :: zip xt yt
+  | _ -> [] ;;
+
+let length = foldr (fun _ n -> n + 1) 0 ;;
+let swap = fun p -> (snd p, fst p) ;;
+
+(id 7, id "seven", id true) ;;
+(length [1; 2; 3], length ["a"; "b"]) ;;
+twice (twice (fun n -> n * n)) 2 ;;
+flip (fun a b -> a ^ b) "world" "hello " ;;
+map swap (zip [1; 2; 3] ["one"; "two"; "three"]) ;;
+compose (map (fun n -> n * 2)) (map (fun n -> n + 1)) [1; 2; 3] ;;
+
+let zero = fun f x -> x ;;
+let succ = fun n f x -> f (n f x) ;;
+let add = fun m n f x -> m f (n f x) ;;
+let toInt = fun n -> n (fun k -> k + 1) 0 ;;
+let three = succ (succ (succ zero)) ;;
+toInt (add three three) ;;

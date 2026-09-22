@@ -1,0 +1,51 @@
+type color = Red | Green | Blue ;;
+type suit = Hearts | Spades ;;
+
+let colorName = fun c ->
+  match c with
+  | Red -> "red"
+  | Green -> "green"
+  | Blue -> "blue" ;;
+
+let classify = fun n ->
+  match n with
+  | 0 -> "zero"
+  | 1 -> "one"
+  | _ -> "many" ;;
+
+let agreement = fun p ->
+  match p with
+  | (true, true) -> "both"
+  | (false, false) -> "neither"
+  | _ -> "one" ;;
+
+let rec merge = fun xs ys ->
+  match (xs, ys) with
+  | ([], _) -> ys
+  | (_, []) -> xs
+  | (x :: xt, y :: yt) -> if x <= y then x :: merge xt ys else y :: merge xs yt ;;
+
+let firstTwo = fun xs ->
+  match xs with
+  | [] -> None
+  | [x] -> Some x
+  | x :: _ :: _ -> Some x ;;
+
+let beats = fun a b ->
+  match (a, b) with
+  | (Spades, Hearts) -> true
+  | (Hearts, _) -> false
+  | (Spades, Spades) -> false ;;
+
+List.map colorName [Red; Green; Blue] ;;
+List.map classify [0; 1; 2; 42] ;;
+(agreement (true, true), agreement (true, false), agreement (false, false)) ;;
+merge [1; 4; 9] [2; 3; 10] ;;
+(firstTwo [7; 8; 9], firstTwo []) ;;
+(beats Spades Hearts, beats Hearts Spades) ;;
+
+let rec zipExact = fun xs ys ->
+  match (xs, ys) with
+  | ([], []) -> []
+  | (x :: xt, y :: yt) -> (x, y) :: zipExact xt yt
+  | (_ :: _, []) -> [] ;;

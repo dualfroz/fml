@@ -13,24 +13,28 @@ let private printResult (r: PhraseResult) =
 
 let private reportError (kind: string) (message: string) = eprintfn "%s: %s" kind message
 
-let private runFile (path: string) : int =
-    let source = IO.File.ReadAllText path
-    let session = Session()
-    session.LoadPrelude()
-    try
-        for phrase in parsePhrases source do
-            session.RunPhrase phrase |> List.iter printResult
-        0
-    with
-    | LexError m -> reportError "Lex error" m; 1
-    | ParseError m -> reportError "Parse error" m; 1
-    | TypeError m -> reportError "Type error" m; 1
-    | MatchError m -> reportError "Match error" m; 1
-    | RuntimeError m -> reportError "Runtime error" m; 1
+let private runFile (backend: Backend) (path: string) : int =
+    if not (IO.File.Exists path) then
+        reportError "File error" (sprintf "cannot find file '%s'" path)
+        1
+    else
+        let source = IO.File.ReadAllText path
+        let session = Session(backend)
+        session.LoadPrelude()
+        try
+            for phrase in parsePhrases source do
+                session.RunPhrase phrase |> List.iter printResult
+            0
+        with
+        | LexError m -> reportError "Lex error" m; 1
+        | ParseError m -> reportError "Parse error" m; 1
+        | TypeError m -> reportError "Type error" m; 1
+        | MatchError m -> reportError "Match error" m; 1
+        | RuntimeError m -> reportError "Runtime error" m; 1
 
-let private repl () =
+let private repl (backend: Backend) =
     printfn "fml REPL - enter an expression or a definition, Ctrl-D to quit."
-    let session = Session()
+    let session = Session(backend)
     session.LoadPrelude()
     let mutable running = true
     while running do
@@ -53,13 +57,20 @@ let private repl () =
             | RuntimeError m -> printfn "Runtime error: %s" m
     printfn "bye"
 
+let parseArgs (argv: string []) : (Backend * string option) option =
+    let backend = if Array.contains "--vm" argv then Vm else Interp
+    match argv |> Array.filter ((<>) "--vm") with
+    | [||] -> Some(backend, None)
+    | [| path |] when not (path.StartsWith "--") -> Some(backend, Some path)
+    | _ -> None
+
 [<EntryPoint>]
 let main argv =
-    match argv with
-    | [||] ->
-        repl ()
+    match parseArgs argv with
+    | Some(backend, None) ->
+        repl backend
         0
-    | [| path |] -> runFile path
-    | _ ->
-        eprintfn "usage: fml [file.fml]"
+    | Some(backend, Some path) -> runFile backend path
+    | None ->
+        eprintfn "usage: fml [--vm] [file.fml]"
         1

@@ -17,6 +17,11 @@ let private recordTypeOfField (fieldName: string) : string =
     | Some info -> info.TypeName
     | None -> raise (TypeError(sprintf "unknown record field '%s'" fieldName))
 
+let private requireRecFunction (rhs: Expr) =
+    match rhs with
+    | Lambda _ -> ()
+    | _ -> raise (TypeError "let rec binding must be a function")
+
 let rec inferPattern (pat: Pattern) : Ty * (string * Ty) list =
     match pat with
     | PWildcard -> newVar (), []
@@ -87,6 +92,7 @@ let rec infer (env: TypeEnv) (expr: Expr) : Ty =
         generalize rhsTy
         infer (Map.add name rhsTy env) body
     | Let(true, name, rhs, body) ->
+        requireRecFunction rhs
         enterLevel ()
         let nameTy = newVar ()
         let rhsTy = infer (Map.add name nameTy env) rhs
@@ -176,6 +182,7 @@ let rec infer (env: TypeEnv) (expr: Expr) : Ty =
 
 and inferLetGroup (env: TypeEnv) (isRec: bool) (bindings: (string * Expr) list) : TypeEnv =
     if isRec then
+        bindings |> List.iter (snd >> requireRecFunction)
         enterLevel ()
         let placeholders = bindings |> List.map (fun (name, _) -> name, newVar ())
         let recEnv = List.fold (fun e (n, ty) -> Map.add n ty e) env placeholders

@@ -1,0 +1,27 @@
+val area : shape -> int = <fun>
+val describe : shape -> string = <fun>
+val shapes : shape list = [Circle 2; Rect (3, 3); Rect (2, 5); Triangle (6, 4)]
+val it : string list = ["circle of radius 2"; "square 3"; "rectangle 2x5"; "triangle 6/4"]
+val it : int = 43
+val origin : point = { x = 0; y = 0 }
+val moveBy : point -> int -> int -> point = <fun>
+val manhattan : point -> point -> int = <fun>
+val it : point = { x = 3; y = -4 }
+val it : int = 7
+val insert : int -> int tree -> int tree = <fun>
+val toList : 'a tree -> 'a list = <fun>
+val depth : 'a tree -> int = <fun>
+val mapTree : ('a -> 'b) -> 'a tree -> 'b tree = <fun>
+val findMin : 'a tree -> 'a option = <fun>
+val numbers : int tree = Node (Node (Node (Leaf, 20, Leaf), 30, Node (Leaf, 40, Leaf)), 50, Node (Node (Leaf, 60, Leaf), 70, Node (Leaf, 80, Leaf)))
+val it : int list = [20; 30; 40; 50; 60; 70; 80]
+val it : int = 3
+val it : int option = Some 20
+val it : bool list = [true; false; true; false; true; false; true]
+val it : string option = Some "#20"
+val staff : employee list = [{ name = "Ada"; salary = 120; team = "compilers" }; { name = "Brian"; salary = 100; team = "runtime" }; { name = "Grace"; salary = 130; team = "compilers" }]
+val payroll : string -> employee list -> int = <fun>
+val giveRaise : int -> employee -> employee = <fun>
+val it : int * int = (250, 100)
+val it : string list = ["Ada"; "Grace"]
+val it : employee list = [{ name = "Ada"; salary = 132; team = "compilers" }; { name = "Brian"; salary = 110; team = "runtime" }; { name = "Grace"; salary = 143; team = "compilers" }]

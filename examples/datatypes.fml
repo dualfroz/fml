@@ -1,0 +1,92 @@
+type shape =
+  | Circle of int
+  | Rect of int * int
+  | Triangle of int * int ;;
+
+let area = fun s ->
+  match s with
+  | Circle r -> 3 * r * r
+  | Rect (w, h) -> w * h
+  | Triangle (base, height) -> base * height / 2 ;;
+
+let describe = fun s ->
+  match s with
+  | Circle r -> "circle of radius " ^ intToString r
+  | Rect (w, h) -> if w = h then "square " ^ intToString w else "rectangle " ^ intToString w ^ "x" ^ intToString h
+  | Triangle (base, height) -> "triangle " ^ intToString base ^ "/" ^ intToString height ;;
+
+let shapes = [Circle 2; Rect (3, 3); Rect (2, 5); Triangle (6, 4)] ;;
+List.map describe shapes ;;
+List.sum (List.map area shapes) ;;
+
+type point = { x : int; y : int } ;;
+
+let origin = { x = 0; y = 0 } ;;
+let moveBy = fun p dx dy -> { x = p.x + dx; y = p.y + dy } ;;
+let manhattan = fun p q ->
+  match (p, q) with
+  | ({ x = x1; y = y1 }, { x = x2; y = y2 }) ->
+    let dx = x1 - x2 in
+    let dy = y1 - y2 in
+    (if dx < 0 then 0 - dx else dx) + (if dy < 0 then 0 - dy else dy) ;;
+
+moveBy origin 3 (-4) ;;
+manhattan origin (moveBy origin 3 (-4)) ;;
+
+type 'a tree = Leaf | Node of 'a tree * 'a * 'a tree ;;
+
+let rec insert = fun v t ->
+  match t with
+  | Leaf -> Node (Leaf, v, Leaf)
+  | Node (l, x, r) ->
+    if v < x then Node (insert v l, x, r)
+    else if v > x then Node (l, x, insert v r)
+    else t ;;
+
+let rec toList = fun t ->
+  match t with
+  | Leaf -> []
+  | Node (l, x, r) -> List.append (toList l) (x :: toList r) ;;
+
+let rec depth = fun t ->
+  match t with
+  | Leaf -> 0
+  | Node (l, _, r) ->
+    let dl = depth l in
+    let dr = depth r in
+    1 + (if dl > dr then dl else dr) ;;
+
+let rec mapTree = fun f t ->
+  match t with
+  | Leaf -> Leaf
+  | Node (l, x, r) -> Node (mapTree f l, f x, mapTree f r) ;;
+
+let rec findMin = fun t ->
+  match t with
+  | Leaf -> None
+  | Node (Leaf, x, _) -> Some x
+  | Node (l, _, _) -> findMin l ;;
+
+let numbers = List.foldl (fun t v -> insert v t) Leaf [50; 30; 70; 20; 40; 60; 80; 30] ;;
+toList numbers ;;
+depth numbers ;;
+findMin numbers ;;
+toList (mapTree (fun n -> n mod 20 = 0) numbers) ;;
+findMin (mapTree (fun n -> "#" ^ intToString n) numbers) ;;
+
+type employee = { name : string; team : string; salary : int } ;;
+
+let staff = [
+  { name = "Ada"; team = "compilers"; salary = 120 };
+  { name = "Brian"; team = "runtime"; salary = 100 };
+  { name = "Grace"; team = "compilers"; salary = 130 }
+] ;;
+
+let payroll = fun team people ->
+  List.sum (List.map (fun e -> e.salary) (List.filter (fun e -> e.team = team) people)) ;;
+
+let giveRaise = fun pct e -> { name = e.name; team = e.team; salary = e.salary + e.salary * pct / 100 } ;;
+
+(payroll "compilers" staff, payroll "runtime" staff) ;;
+List.map (fun e -> e.name) (List.filter (fun e -> e.salary > 110) staff) ;;
+List.map (giveRaise 10) staff ;;
