@@ -9,7 +9,12 @@
 
   <ItemGroup>
     <Compile Include="Tests.fs" />
+    <Compile Include="ExampleTests.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\examples\*.fml;..\..\examples\*.out" Link="examples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fml.Core\Fml.Core.fsproj" />
+    <ProjectReference Include="..\..\src\Fml.Cli\Fml.Cli.fsproj" />
   </ItemGroup>
 
 </Project>

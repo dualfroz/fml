@@ -1,14 +1,12 @@
 module Fml.Tests.Tests
 
 open Xunit
+open Fml.Core.Types
 open Fml.Core.Value
 open Fml.Core.Interpreter
 
-// Keep the shared mutable inference state single-threaded across facts.
 [<assembly: CollectionBehavior(DisableTestParallelization = true)>]
 do ()
-
-// --- Type inference of well-known polymorphic terms ---
 
 [<Fact>]
 let ``identity infers 'a -> 'a`` () =
@@ -47,8 +45,6 @@ let ``print infers 'a -> unit`` () =
 let ``let polymorphism reuses id at two types`` () =
     Assert.Equal("int * bool", typeOf "let id = fun x -> x in (id 1, id true)")
 
-// --- Type error detection ---
-
 [<Fact>]
 let ``adding an int and a bool is a type error`` () =
     match tryTypeOf "1 + true" with
@@ -72,8 +68,6 @@ let ``self application triggers the occurs check`` () =
     match tryTypeOf "fun x -> x x" with
     | Error msg -> Assert.Contains("occurs", msg)
     | Ok t -> Assert.True(false, sprintf "expected an occurs-check error, inferred %s" t)
-
-// --- Evaluation ---
 
 [<Fact>]
 let ``factorial via let rec`` () =
@@ -118,8 +112,6 @@ let ``polymorphic equality on lists`` () =
     Assert.Equal("true", evalToString "[1; 2; 3] = [1; 2; 3]")
     Assert.Equal("false", evalToString "[1; 2] = [1; 2; 3]")
 
-// --- Oracle: interpreter and bytecode VM must agree, bit for bit ---
-
 let private bothBackends (src: string) : string =
     let fromInterp = prettyValue (evalInterp src)
     let fromVm = prettyValue (evalVm src)
@@ -130,6 +122,17 @@ let private bothWithPrelude (src: string) : string =
     let fromInterp = prettyValue (evalOn Interp true src)
     let fromVm = prettyValue (evalOn Vm true src)
     Assert.Equal(fromInterp, fromVm)
+    fromInterp
+
+let private bothFail (src: string) : string =
+    let failureOn backend =
+        try
+            sprintf "no error, got %s" (prettyValue (evalOn backend false src))
+        with
+        | TypeError m -> "Type error: " + m
+        | RuntimeError m -> "Runtime error: " + m
+    let fromInterp = failureOn Interp
+    Assert.Equal(fromInterp, failureOn Vm)
     fromInterp
 
 [<Fact>]
@@ -196,8 +199,6 @@ let ``oracle record with unsorted fields projects correctly`` () =
 let ``oracle let and parallel binding agrees`` () =
     Assert.Equal("(1, 2)", bothBackends "let a = 1 and b = 2 in (a, b)")
 
-// --- Algebraic data types: inference ---
-
 [<Fact>]
 let ``option constructor infers option type`` () =
     Assert.Equal("int option", typeOf "type 'a option = None | Some of 'a ;; Some 3")
@@ -226,8 +227,6 @@ let ``record with a missing field is rejected`` () =
     match tryTypeOf "type pt = { x : int; y : int } ;; { x = 1 }" with
     | Error _ -> Assert.True(true)
     | Ok t -> Assert.True(false, sprintf "expected a missing-field error, inferred %s" t)
-
-// --- Exhaustiveness and reachability ---
 
 [<Fact>]
 let ``non-exhaustive option match is rejected`` () =
@@ -269,8 +268,6 @@ let ``a duplicated constructor clause is rejected`` () =
     | Error msg -> Assert.Contains("unreachable", msg)
     | Ok _ -> Assert.True(false, "expected the duplicate Red clause to be reported")
 
-// --- Standard library implemented in fml ---
-
 [<Fact>]
 let ``prelude List map and length agree`` () =
     Assert.Equal("[2; 4; 6]", bothWithPrelude "List.map (fun x -> x * 2) [1; 2; 3]")
@@ -307,8 +304,6 @@ let ``opening a module brings members into scope`` () =
 let ``qualified access reaches across modules`` () =
     Assert.Equal("3", bothWithPrelude "Map.size (Map.add 1 1 (Map.add 2 2 (Map.add 3 3 Map.empty)))")
 
-// --- Records and constructors at runtime ---
-
 [<Fact>]
 let ``record field update produces a fresh record`` () =
     let src = "type pt = { x : int; y : int } ;; let p = { x = 1; y = 2 } in let q = { x = p.x + 5; y = p.y } in (p.x, q.x)"
@@ -323,3 +318,63 @@ let ``constructor carrying a tuple destructures in a match`` () =
 let ``pretty printing of a nested constructor value`` () =
     let src = "type 'a option = None | Some of 'a ;; Some (Some 5)"
     Assert.Equal("Some (Some 5)", bothBackends src)
+
+[<Fact>]
+let ``shadowing a top-level name keeps the earlier binding in closures`` () =
+    Assert.Equal("1", bothBackends "let k = 1 ;; let f = fun y -> k ;; let k = 2 ;; f 0")
+
+[<Fact>]
+let ``redefining a top-level function keeps callers on the old definition`` () =
+    let src = "let g = fun x -> x + 1 ;; let rec h = fun n -> if n = 0 then g 0 else h (n - 1) ;; let g = fun x -> x + 100 ;; (h 3, g 0)"
+    Assert.Equal("(1, 100)", bothBackends src)
+
+[<Fact>]
+let ``top-level mutually recursive functions agree`` () =
+    let src = "let rec isEven = fun n -> if n = 0 then true else isOdd (n - 1) and isOdd = fun n -> if n = 0 then false else isEven (n - 1) ;; (isEven 7, isOdd 7)"
+    Assert.Equal("(false, true)", bothBackends src)
+
+[<Fact>]
+let ``out of range integer literal is a lex error with its position`` () =
+    match tryEval "let x = 1 ;;\n  99999999999" with
+    | Error msg -> Assert.Equal("integer literal 99999999999 is out of range at line 2, column 3", msg)
+    | Ok v -> Assert.True(false, sprintf "expected a lex error, got %s" (prettyValue v))
+
+[<Fact>]
+let ``largest int literal still lexes`` () =
+    Assert.Equal("2147483647", evalToString "2147483647")
+
+[<Fact>]
+let ``single-field constructor accepts a tuple argument`` () =
+    let src = "type 'a option = None | Some of 'a ;; Some (1, 2)"
+    Assert.Equal("(int * int) option", typeOf src)
+    Assert.Equal("Some (1, 2)", bothBackends src)
+
+[<Fact>]
+let ``single-field constructor pattern destructures a tuple`` () =
+    let src = "type 'a option = None | Some of 'a ;; match Some (3, 4) with Some (a, b) -> a * b | None -> 0"
+    Assert.Equal("12", bothBackends src)
+
+[<Fact>]
+let ``multi-field constructor still spreads a tuple into fields`` () =
+    let src = "type pair = Pair of int * int ;; match Pair (5, 6) with Pair (a, b) -> a - b"
+    Assert.Equal("int", typeOf src)
+    Assert.Equal("-1", bothBackends src)
+
+[<Fact>]
+let ``local let rec of a non-function is rejected by the type checker`` () =
+    Assert.Equal(Error "let rec binding must be a function", tryTypeOf "let rec x = 5 in x")
+    Assert.Equal("Type error: let rec binding must be a function", bothFail "let rec x = 5 in x")
+    Assert.Equal("Type error: let rec binding must be a function", bothFail "let rec f = fun n -> n and k = 5 in k")
+
+[<Fact>]
+let ``top-level let rec of a non-function is rejected on both engines`` () =
+    Assert.Equal("Type error: let rec binding must be a function", bothFail "let rec x = x + 1")
+    Assert.Equal("Type error: let rec binding must be a function", bothFail "let rec f = fun n -> n and k = f 1")
+
+[<Fact>]
+let ``non-ascii digits are unexpected characters`` () =
+    let arabicThree = char 0x0663
+    let expected = Error(sprintf "unexpected character '%c'" arabicThree)
+    Assert.Equal(expected, tryEval (string arabicThree))
+    Assert.Equal(expected, tryEval (sprintf "1%c" arabicThree))
+    Assert.Equal(expected, tryEval (sprintf "let x%c = 1 ;; 2" arabicThree))
